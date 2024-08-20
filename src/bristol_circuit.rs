@@ -9,22 +9,22 @@ use std::{
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BristolCircuit {
-    pub wire_count: u32,
+    pub wire_count: usize,
     pub info: CircuitInfo,
     pub gates: Vec<Gate>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CircuitInfo {
-    pub input_name_to_wire_index: HashMap<String, u32>,
+    pub input_name_to_wire_index: HashMap<String, usize>,
     pub constants: HashMap<String, ConstantInfo>,
-    pub output_name_to_wire_index: HashMap<String, u32>,
+    pub output_name_to_wire_index: HashMap<String, usize>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConstantInfo {
     pub value: String,
-    pub wire_index: u32,
+    pub wire_index: usize,
 }
 
 impl BristolCircuit {
@@ -68,11 +68,7 @@ impl BristolCircuit {
         writeln!(w)?;
 
         for gate in &self.gates {
-            writeln!(
-                w,
-                "2 1 {} {} {} {}",
-                gate.lh_in, gate.rh_in, gate.out, gate.op
-            )?;
+            writeln!(w, "{}", gate)?;
         }
 
         Ok(())
@@ -85,14 +81,14 @@ impl BristolCircuit {
         let (gate_count, wire_count) = BristolLine::read(r)?.circuit_sizes()?;
 
         let input_count = BristolLine::read(r)?.io_count()?;
-        if input_count != info.input_name_to_wire_index.len() as u32 {
+        if input_count != info.input_name_to_wire_index.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Input count mismatch".into(),
             });
         }
 
         let output_count = BristolLine::read(r)?.io_count()?;
-        if output_count != info.output_name_to_wire_index.len() as u32 {
+        if output_count != info.output_name_to_wire_index.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Output count mismatch".into(),
             });
@@ -141,14 +137,14 @@ impl BristolLine {
         }
     }
 
-    pub fn circuit_sizes(&self) -> Result<(u32, u32), BristolCircuitError> {
+    pub fn circuit_sizes(&self) -> Result<(usize, usize), BristolCircuitError> {
         Ok((self.get(0)?, self.get(1)?))
     }
 
-    pub fn io_count(&self) -> Result<u32, BristolCircuitError> {
-        let count = self.get::<u32>(0)?;
+    pub fn io_count(&self) -> Result<usize, BristolCircuitError> {
+        let count = self.get::<usize>(0)?;
 
-        if self.0.len() != (count + 1) as usize {
+        if self.0.len() != (count + 1) {
             return Err(BristolCircuitError::ParsingError {
                 message: format!("Expected {} parts", count + 1),
             });
@@ -166,23 +162,39 @@ impl BristolLine {
     }
 
     pub fn gate(&self) -> Result<Gate, BristolCircuitError> {
-        if self.0.len() != 6 {
+        let input_len = self.get::<usize>(0)?;
+        let output_len = self.get::<usize>(1)?;
+
+        let expected_part_len = input_len + output_len + 3;
+
+        if self.0.len() != expected_part_len {
             return Err(BristolCircuitError::ParsingError {
-                message: "Expected 6 parts".into(),
+                message: format!(
+                    "Inconsistent part length (actual: {}, expected: {})",
+                    self.0.len(),
+                    expected_part_len
+                ),
             });
         }
 
-        if self.get::<u32>(0)? != 2 || self.get::<u32>(1)? != 1 {
-            return Err(BristolCircuitError::ParsingError {
-                message: "Expected 2 inputs and 1 output".into(),
-            });
+        let mut inputs = Vec::<usize>::new();
+
+        for i in 0..input_len {
+            inputs.push(self.get(i + 2)?);
         }
+
+        let mut outputs = Vec::<usize>::new();
+
+        for i in 0..output_len {
+            outputs.push(self.get(i + 2 + input_len)?);
+        }
+
+        let op = self.get::<String>(input_len + output_len + 2)?;
 
         Ok(Gate {
-            lh_in: self.get(2)?,
-            rh_in: self.get(3)?,
-            out: self.get(4)?,
-            op: self.get(5)?,
+            inputs,
+            outputs,
+            op,
         })
     }
 
@@ -230,15 +242,13 @@ mod tests {
             },
             gates: vec![
                 Gate {
-                    lh_in: 0,
-                    rh_in: 1,
-                    out: 2,
+                    inputs: vec![0, 1],
+                    outputs: vec![2],
                     op: "AAdd".to_string(),
                 },
                 Gate {
-                    lh_in: 2,
-                    rh_in: 1,
-                    out: 3,
+                    inputs: vec![2, 1],
+                    outputs: vec![3],
                     op: "AMul".to_string(),
                 },
             ],
@@ -339,16 +349,15 @@ mod tests {
             "AAdd".to_string(),
         ]);
         let gate = bristol_line.gate().unwrap();
-        assert_eq!(gate.lh_in, 0);
-        assert_eq!(gate.rh_in, 1);
-        assert_eq!(gate.out, 2);
+        assert_eq!(gate.inputs, vec![0, 1]);
+        assert_eq!(gate.outputs, vec![2]);
         assert_eq!(gate.op, "AAdd");
     }
 
     #[test]
     fn test_bristol_line_get() {
         let bristol_line = BristolLine(vec!["2".to_string(), "4".to_string()]);
-        let value: u32 = bristol_line.get(0).unwrap();
+        let value: usize = bristol_line.get(0).unwrap();
         assert_eq!(value, 2);
     }
 
