@@ -1,11 +1,9 @@
-use crate::bristol_circuit_error::BristolCircuitError;
+use crate::bristol_line::BristolLine;
 use crate::gate::Gate;
+use crate::raw_bristol_circuit::RawBristolCircuit;
+use crate::{bristol_circuit_error::BristolCircuitError, circuit_info::CircuitInfo};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    io::{BufRead, BufReader, BufWriter, Write},
-    str::FromStr,
-};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BristolCircuit {
@@ -14,20 +12,18 @@ pub struct BristolCircuit {
     pub gates: Vec<Gate>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CircuitInfo {
-    pub input_name_to_wire_index: HashMap<String, usize>,
-    pub constants: HashMap<String, ConstantInfo>,
-    pub output_name_to_wire_index: HashMap<String, usize>,
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConstantInfo {
-    pub value: String,
-    pub wire_index: usize,
-}
-
 impl BristolCircuit {
+    pub fn from_raw(raw: &RawBristolCircuit) -> Result<BristolCircuit, BristolCircuitError> {
+        BristolCircuit::from_info_and_bristol_string(&raw.info, &raw.bristol)
+    }
+
+    pub fn to_raw(&self) -> Result<RawBristolCircuit, BristolCircuitError> {
+        Ok(RawBristolCircuit {
+            bristol: self.get_bristol_string()?,
+            info: self.info.clone(),
+        })
+    }
+
     pub fn get_bristol_string(&self) -> Result<String, BristolCircuitError> {
         let mut output = Vec::new();
         let mut writer = BufWriter::new(&mut output);
@@ -41,7 +37,7 @@ impl BristolCircuit {
     }
 
     pub fn from_info_and_bristol_string(
-        info: CircuitInfo,
+        info: &CircuitInfo,
         input: &str,
     ) -> Result<BristolCircuit, BristolCircuitError> {
         BristolCircuit::read_info_and_bristol(info, &mut BufReader::new(input.as_bytes()))
@@ -75,7 +71,7 @@ impl BristolCircuit {
     }
 
     pub fn read_info_and_bristol<R: BufRead>(
-        info: CircuitInfo,
+        info: &CircuitInfo,
         r: &mut R,
     ) -> Result<BristolCircuit, BristolCircuitError> {
         let (gate_count, wire_count) = BristolLine::read(r)?.circuit_sizes()?;
@@ -109,114 +105,9 @@ impl BristolCircuit {
 
         Ok(BristolCircuit {
             wire_count,
-            info,
+            info: info.clone(),
             gates,
         })
-    }
-}
-
-struct BristolLine(Vec<String>);
-
-impl BristolLine {
-    pub fn read(r: &mut impl BufRead) -> Result<Self, BristolCircuitError> {
-        loop {
-            let mut line = String::new();
-            r.read_line(&mut line)?;
-
-            let line = line.trim();
-
-            if line.is_empty() {
-                continue;
-            }
-
-            return Ok(BristolLine(
-                line.split_whitespace()
-                    .map(|part| part.to_string())
-                    .collect(),
-            ));
-        }
-    }
-
-    pub fn circuit_sizes(&self) -> Result<(usize, usize), BristolCircuitError> {
-        Ok((self.get(0)?, self.get(1)?))
-    }
-
-    pub fn io_count(&self) -> Result<usize, BristolCircuitError> {
-        let count = self.get::<usize>(0)?;
-
-        if self.0.len() != (count + 1) {
-            return Err(BristolCircuitError::ParsingError {
-                message: format!("Expected {} parts", count + 1),
-            });
-        }
-
-        for i in 1..self.0.len() {
-            if self.get_str(i)? != "1" {
-                return Err(BristolCircuitError::ParsingError {
-                    message: format!("Expected 1 at index {}", i),
-                });
-            }
-        }
-
-        Ok(count)
-    }
-
-    pub fn gate(&self) -> Result<Gate, BristolCircuitError> {
-        let input_len = self.get::<usize>(0)?;
-        let output_len = self.get::<usize>(1)?;
-
-        let expected_part_len = input_len + output_len + 3;
-
-        if self.0.len() != expected_part_len {
-            return Err(BristolCircuitError::ParsingError {
-                message: format!(
-                    "Inconsistent part length (actual: {}, expected: {})",
-                    self.0.len(),
-                    expected_part_len
-                ),
-            });
-        }
-
-        let mut inputs = Vec::<usize>::new();
-
-        for i in 0..input_len {
-            inputs.push(self.get(i + 2)?);
-        }
-
-        let mut outputs = Vec::<usize>::new();
-
-        for i in 0..output_len {
-            outputs.push(self.get(i + 2 + input_len)?);
-        }
-
-        let op = self.get::<String>(input_len + output_len + 2)?;
-
-        Ok(Gate {
-            inputs,
-            outputs,
-            op,
-        })
-    }
-
-    fn get<T: FromStr>(&self, index: usize) -> Result<T, BristolCircuitError> {
-        self.0
-            .get(index)
-            .ok_or(BristolCircuitError::ParsingError {
-                message: format!("Index {} out of bounds", index),
-            })?
-            .parse::<T>()
-            .map_err(|_| BristolCircuitError::ParsingError {
-                message: format!("Failed to convert at index {}", index),
-            })
-    }
-
-    fn get_str(&self, index: usize) -> Result<&str, BristolCircuitError> {
-        self.0
-            .get(index)
-            .ok_or(BristolCircuitError::ParsingError {
-                message: format!("Index {} out of bounds", index),
-            })
-            .map(|s| s.as_str())
     }
 }
 
@@ -286,7 +177,7 @@ mod tests {
     fn test_read_bristol() {
         assert_eq!(
             BristolCircuit::from_info_and_bristol_string(
-                CircuitInfo {
+                &CircuitInfo {
                     input_name_to_wire_index: [
                         ("input0".to_string(), 0),
                         ("input1".to_string(), 1)
