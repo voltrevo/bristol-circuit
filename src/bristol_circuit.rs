@@ -1,17 +1,17 @@
 use crate::bristol_circuit_error::BristolCircuitError;
+use crate::gate::Gate;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter, Write},
     str::FromStr,
 };
-use crate::util::BristolGate;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BristolCircuit {
     pub wire_count: u32,
     pub info: CircuitInfo,
-    pub gates: Vec<BristolGate>,
+    pub gates: Vec<Gate>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,10 +47,7 @@ impl BristolCircuit {
         BristolCircuit::read_info_and_bristol(info, &mut BufReader::new(input.as_bytes()))
     }
 
-    pub fn write_bristol<W: Write>(
-        &self,
-        w: &mut W,
-    ) -> Result<(), BristolCircuitError> {
+    pub fn write_bristol<W: Write>(&self, w: &mut W) -> Result<(), BristolCircuitError> {
         writeln!(w, "{} {}", self.gates.len(), self.wire_count)?;
 
         write!(w, "{}", self.info.input_name_to_wire_index.len())?;
@@ -168,7 +165,7 @@ impl BristolLine {
         Ok(count)
     }
 
-    pub fn gate(&self) -> Result<BristolGate, BristolCircuitError> {
+    pub fn gate(&self) -> Result<Gate, BristolCircuitError> {
         if self.0.len() != 6 {
             return Err(BristolCircuitError::ParsingError {
                 message: "Expected 6 parts".into(),
@@ -181,7 +178,7 @@ impl BristolLine {
             });
         }
 
-        Ok(BristolGate {
+        Ok(Gate {
             lh_in: self.get(2)?,
             rh_in: self.get(3)?,
             out: self.get(4)?,
@@ -213,8 +210,6 @@ impl BristolLine {
 
 #[cfg(test)]
 mod tests {
-    use crate::util::AGateType;
-
     use super::*;
     use std::io::{BufReader, Cursor};
 
@@ -234,17 +229,17 @@ mod tests {
                 output_name_to_wire_index: [("output0".to_string(), 3)].iter().cloned().collect(),
             },
             gates: vec![
-                BristolGate {
+                Gate {
                     lh_in: 0,
                     rh_in: 1,
                     out: 2,
-                    op: AGateType::AAdd,
+                    op: "AAdd".to_string(),
                 },
-                BristolGate {
+                Gate {
                     lh_in: 2,
                     rh_in: 1,
                     out: 3,
-                    op: AGateType::AMul,
+                    op: "AMul".to_string(),
                 },
             ],
         }
@@ -347,7 +342,7 @@ mod tests {
         assert_eq!(gate.lh_in, 0);
         assert_eq!(gate.rh_in, 1);
         assert_eq!(gate.out, 2);
-        assert_eq!(gate.op, AGateType::AAdd);
+        assert_eq!(gate.op, "AAdd");
     }
 
     #[test]
