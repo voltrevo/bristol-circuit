@@ -1,5 +1,5 @@
-mod arithmetic_circuit;
-mod arithmetic_circuit_error;
+mod bristol_circuit;
+mod bristol_circuit_error;
 mod util;
 
-pub use arithmetic_circuit::ArithmeticCircuit;
+pub use bristol_circuit::BristolCircuit;

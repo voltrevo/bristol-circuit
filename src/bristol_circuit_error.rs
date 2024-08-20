@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ArithmeticCircuitError {
+pub enum BristolCircuitError {
     #[error("Parsing error: {message}")]
     ParsingError { message: String },
     #[error(transparent)]

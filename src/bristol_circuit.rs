@@ -1,17 +1,17 @@
-use crate::arithmetic_circuit_error::ArithmeticCircuitError;
+use crate::bristol_circuit_error::BristolCircuitError;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter, Write},
     str::FromStr,
 };
-use crate::util::ArithmeticGate;
+use crate::util::BristolGate;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArithmeticCircuit {
+pub struct BristolCircuit {
     pub wire_count: u32,
     pub info: CircuitInfo,
-    pub gates: Vec<ArithmeticGate>,
+    pub gates: Vec<BristolGate>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,15 +27,15 @@ pub struct ConstantInfo {
     pub wire_index: u32,
 }
 
-impl ArithmeticCircuit {
-    pub fn get_bristol_string(&self) -> Result<String, ArithmeticCircuitError> {
+impl BristolCircuit {
+    pub fn get_bristol_string(&self) -> Result<String, BristolCircuitError> {
         let mut output = Vec::new();
         let mut writer = BufWriter::new(&mut output);
 
         self.write_bristol(&mut writer)?;
         drop(writer);
 
-        String::from_utf8(output).map_err(|_| ArithmeticCircuitError::ParsingError {
+        String::from_utf8(output).map_err(|_| BristolCircuitError::ParsingError {
             message: "Generated Bristol data was not valid utf8".into(),
         })
     }
@@ -43,14 +43,14 @@ impl ArithmeticCircuit {
     pub fn from_info_and_bristol_string(
         info: CircuitInfo,
         input: &str,
-    ) -> Result<ArithmeticCircuit, ArithmeticCircuitError> {
-        ArithmeticCircuit::read_info_and_bristol(info, &mut BufReader::new(input.as_bytes()))
+    ) -> Result<BristolCircuit, BristolCircuitError> {
+        BristolCircuit::read_info_and_bristol(info, &mut BufReader::new(input.as_bytes()))
     }
 
     pub fn write_bristol<W: Write>(
         &self,
         w: &mut W,
-    ) -> Result<(), ArithmeticCircuitError> {
+    ) -> Result<(), BristolCircuitError> {
         writeln!(w, "{} {}", self.gates.len(), self.wire_count)?;
 
         write!(w, "{}", self.info.input_name_to_wire_index.len())?;
@@ -84,19 +84,19 @@ impl ArithmeticCircuit {
     pub fn read_info_and_bristol<R: BufRead>(
         info: CircuitInfo,
         r: &mut R,
-    ) -> Result<ArithmeticCircuit, ArithmeticCircuitError> {
+    ) -> Result<BristolCircuit, BristolCircuitError> {
         let (gate_count, wire_count) = BristolLine::read(r)?.circuit_sizes()?;
 
         let input_count = BristolLine::read(r)?.io_count()?;
         if input_count != info.input_name_to_wire_index.len() as u32 {
-            return Err(ArithmeticCircuitError::Inconsistency {
+            return Err(BristolCircuitError::Inconsistency {
                 message: "Input count mismatch".into(),
             });
         }
 
         let output_count = BristolLine::read(r)?.io_count()?;
         if output_count != info.output_name_to_wire_index.len() as u32 {
-            return Err(ArithmeticCircuitError::Inconsistency {
+            return Err(BristolCircuitError::Inconsistency {
                 message: "Output count mismatch".into(),
             });
         }
@@ -108,13 +108,13 @@ impl ArithmeticCircuit {
 
         for line in r.lines() {
             if !line?.trim().is_empty() {
-                return Err(ArithmeticCircuitError::ParsingError {
+                return Err(BristolCircuitError::ParsingError {
                     message: "Unexpected non-whitespace line after gates".into(),
                 });
             }
         }
 
-        Ok(ArithmeticCircuit {
+        Ok(BristolCircuit {
             wire_count,
             info,
             gates,
@@ -125,7 +125,7 @@ impl ArithmeticCircuit {
 struct BristolLine(Vec<String>);
 
 impl BristolLine {
-    pub fn read(r: &mut impl BufRead) -> Result<Self, ArithmeticCircuitError> {
+    pub fn read(r: &mut impl BufRead) -> Result<Self, BristolCircuitError> {
         loop {
             let mut line = String::new();
             r.read_line(&mut line)?;
@@ -144,22 +144,22 @@ impl BristolLine {
         }
     }
 
-    pub fn circuit_sizes(&self) -> Result<(u32, u32), ArithmeticCircuitError> {
+    pub fn circuit_sizes(&self) -> Result<(u32, u32), BristolCircuitError> {
         Ok((self.get(0)?, self.get(1)?))
     }
 
-    pub fn io_count(&self) -> Result<u32, ArithmeticCircuitError> {
+    pub fn io_count(&self) -> Result<u32, BristolCircuitError> {
         let count = self.get::<u32>(0)?;
 
         if self.0.len() != (count + 1) as usize {
-            return Err(ArithmeticCircuitError::ParsingError {
+            return Err(BristolCircuitError::ParsingError {
                 message: format!("Expected {} parts", count + 1),
             });
         }
 
         for i in 1..self.0.len() {
             if self.get_str(i)? != "1" {
-                return Err(ArithmeticCircuitError::ParsingError {
+                return Err(BristolCircuitError::ParsingError {
                     message: format!("Expected 1 at index {}", i),
                 });
             }
@@ -168,20 +168,20 @@ impl BristolLine {
         Ok(count)
     }
 
-    pub fn gate(&self) -> Result<ArithmeticGate, ArithmeticCircuitError> {
+    pub fn gate(&self) -> Result<BristolGate, BristolCircuitError> {
         if self.0.len() != 6 {
-            return Err(ArithmeticCircuitError::ParsingError {
+            return Err(BristolCircuitError::ParsingError {
                 message: "Expected 6 parts".into(),
             });
         }
 
         if self.get::<u32>(0)? != 2 || self.get::<u32>(1)? != 1 {
-            return Err(ArithmeticCircuitError::ParsingError {
+            return Err(BristolCircuitError::ParsingError {
                 message: "Expected 2 inputs and 1 output".into(),
             });
         }
 
-        Ok(ArithmeticGate {
+        Ok(BristolGate {
             lh_in: self.get(2)?,
             rh_in: self.get(3)?,
             out: self.get(4)?,
@@ -189,22 +189,22 @@ impl BristolLine {
         })
     }
 
-    fn get<T: FromStr>(&self, index: usize) -> Result<T, ArithmeticCircuitError> {
+    fn get<T: FromStr>(&self, index: usize) -> Result<T, BristolCircuitError> {
         self.0
             .get(index)
-            .ok_or(ArithmeticCircuitError::ParsingError {
+            .ok_or(BristolCircuitError::ParsingError {
                 message: format!("Index {} out of bounds", index),
             })?
             .parse::<T>()
-            .map_err(|_| ArithmeticCircuitError::ParsingError {
+            .map_err(|_| BristolCircuitError::ParsingError {
                 message: format!("Failed to convert at index {}", index),
             })
     }
 
-    fn get_str(&self, index: usize) -> Result<&str, ArithmeticCircuitError> {
+    fn get_str(&self, index: usize) -> Result<&str, BristolCircuitError> {
         self.0
             .get(index)
-            .ok_or(ArithmeticCircuitError::ParsingError {
+            .ok_or(BristolCircuitError::ParsingError {
                 message: format!("Index {} out of bounds", index),
             })
             .map(|s| s.as_str())
@@ -218,9 +218,9 @@ mod tests {
     use super::*;
     use std::io::{BufReader, Cursor};
 
-    // Helper function to create a sample ArithmeticCircuit
-    fn create_sample_circuit() -> ArithmeticCircuit {
-        ArithmeticCircuit {
+    // Helper function to create a sample BristolCircuit
+    fn create_sample_circuit() -> BristolCircuit {
+        BristolCircuit {
             // d = (a + b) * b
             // we need to use inputX and outputX to match deserialization from bristol format
             // which doesn't specify the wire names
@@ -234,13 +234,13 @@ mod tests {
                 output_name_to_wire_index: [("output0".to_string(), 3)].iter().cloned().collect(),
             },
             gates: vec![
-                ArithmeticGate {
+                BristolGate {
                     lh_in: 0,
                     rh_in: 1,
                     out: 2,
                     op: AGateType::AAdd,
                 },
-                ArithmeticGate {
+                BristolGate {
                     lh_in: 2,
                     rh_in: 1,
                     out: 3,
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn test_read_bristol() {
         assert_eq!(
-            ArithmeticCircuit::from_info_and_bristol_string(
+            BristolCircuit::from_info_and_bristol_string(
                 CircuitInfo {
                     input_name_to_wire_index: [
                         ("input0".to_string(), 0),

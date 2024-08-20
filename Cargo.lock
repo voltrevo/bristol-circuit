@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "arithmetic-circuit"
+name = "bristol-circuit"
 version = "0.1.0"
 dependencies = [
  "serde",
