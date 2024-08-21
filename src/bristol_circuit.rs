@@ -5,7 +5,7 @@ use crate::{bristol_circuit_error::BristolCircuitError, circuit_info::CircuitInf
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BristolCircuit {
     pub wire_count: usize,
     pub info: CircuitInfo,
