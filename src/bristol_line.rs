@@ -28,7 +28,7 @@ impl BristolLine {
         Ok((self.get(0)?, self.get(1)?))
     }
 
-    pub fn io_count(&self) -> Result<usize, BristolCircuitError> {
+    pub fn io_widths(&self) -> Result<Vec<usize>, BristolCircuitError> {
         let count = self.get::<usize>(0)?;
 
         if self.0.len() != (count + 1) {
@@ -37,15 +37,13 @@ impl BristolLine {
             });
         }
 
+        let mut res = Vec::<usize>::new();
+
         for i in 1..self.0.len() {
-            if self.get_str(i)? != "1" {
-                return Err(BristolCircuitError::ParsingError {
-                    message: format!("Expected 1 at index {}", i),
-                });
-            }
+            res.push(self.get(i)?);
         }
 
-        Ok(count)
+        Ok(res)
     }
 
     pub fn gate(&self) -> Result<Gate, BristolCircuitError> {
@@ -97,6 +95,7 @@ impl BristolLine {
             })
     }
 
+    #[cfg(test)]
     pub fn get_str(&self, index: usize) -> Result<&str, BristolCircuitError> {
         self.0
             .get(index)

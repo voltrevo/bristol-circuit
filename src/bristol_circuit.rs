@@ -9,6 +9,12 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 pub struct BristolCircuit {
     pub wire_count: usize,
     pub info: CircuitInfo,
+
+    // None is used for arithmetic circuits, where all io is width 1
+    // Some is used for boolean circuits and the widths indicate the number of bits in each input
+    // and output
+    pub io_widths: Option<(Vec<usize>, Vec<usize>)>,
+
     pub gates: Vec<Gate>,
 }
 
@@ -46,21 +52,32 @@ impl BristolCircuit {
     pub fn write_bristol<W: Write>(&self, w: &mut W) -> Result<(), BristolCircuitError> {
         writeln!(w, "{} {}", self.gates.len(), self.wire_count)?;
 
-        write!(w, "{}", self.info.input_name_to_wire_index.len())?;
+        if let Some((input_widths, output_widths)) = &self.io_widths {
+            write!(w, "{}", input_widths.len())?;
+            for width in input_widths {
+                write!(w, " {}", width)?;
+            }
+            writeln!(w)?;
 
-        for _ in 0..self.info.input_name_to_wire_index.len() {
-            write!(w, " 1")?;
+            write!(w, "{}", output_widths.len())?;
+            for width in output_widths {
+                write!(w, " {}", width)?;
+            }
+            writeln!(w)?;
+        } else {
+            write!(w, "{}", self.info.input_name_to_wire_index.len())?;
+            for _ in 0..self.info.input_name_to_wire_index.len() {
+                write!(w, " 1")?;
+            }
+            writeln!(w)?;
+
+            write!(w, "{}", self.info.output_name_to_wire_index.len())?;
+            for _ in 0..self.info.output_name_to_wire_index.len() {
+                write!(w, " 1")?;
+            }
+            writeln!(w)?;
         }
 
-        writeln!(w)?;
-
-        write!(w, "{}", self.info.output_name_to_wire_index.len())?;
-
-        for _ in 0..self.info.output_name_to_wire_index.len() {
-            write!(w, " 1")?;
-        }
-
-        writeln!(w)?;
         writeln!(w)?;
 
         for gate in &self.gates {
@@ -76,19 +93,30 @@ impl BristolCircuit {
     ) -> Result<BristolCircuit, BristolCircuitError> {
         let (gate_count, wire_count) = BristolLine::read(r)?.circuit_sizes()?;
 
-        let input_count = BristolLine::read(r)?.io_count()?;
-        if input_count != info.input_name_to_wire_index.len() {
+        let input_widths = BristolLine::read(r)?.io_widths()?;
+        if input_widths.len() != info.input_name_to_wire_index.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Input count mismatch".into(),
             });
         }
 
-        let output_count = BristolLine::read(r)?.io_count()?;
-        if output_count != info.output_name_to_wire_index.len() {
+        let output_widths = BristolLine::read(r)?.io_widths()?;
+        if output_widths.len() != info.output_name_to_wire_index.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Output count mismatch".into(),
             });
         }
+
+        let io_widths = {
+            let inputs_all_1 = input_widths.iter().all(|&x| x == 1);
+            let outputs_all_1 = output_widths.iter().all(|&x| x == 1);
+
+            if inputs_all_1 && outputs_all_1 {
+                None
+            } else {
+                Some((input_widths, output_widths))
+            }
+        };
 
         let mut gates = Vec::new();
         for _ in 0..gate_count {
@@ -106,6 +134,7 @@ impl BristolCircuit {
         Ok(BristolCircuit {
             wire_count,
             info: info.clone(),
+            io_widths,
             gates,
         })
     }
@@ -131,6 +160,7 @@ mod tests {
                 constants: Default::default(),
                 output_name_to_wire_index: [("output0".to_string(), 3)].iter().cloned().collect(),
             },
+            io_widths: None,
             gates: vec![
                 Gate {
                     inputs: vec![0, 1],
@@ -225,8 +255,8 @@ mod tests {
     #[test]
     fn test_bristol_line_io_count() {
         let bristol_line = BristolLine(vec!["2".to_string(), "1".to_string(), "1".to_string()]);
-        let io_count = bristol_line.io_count().unwrap();
-        assert_eq!(io_count, 2);
+        let io_widths = bristol_line.io_widths().unwrap();
+        assert_eq!(io_widths, vec![1, 1]);
     }
 
     #[test]
