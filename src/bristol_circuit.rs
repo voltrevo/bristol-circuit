@@ -9,12 +9,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 pub struct BristolCircuit {
     pub wire_count: usize,
     pub info: CircuitInfo,
-
-    // None is used for arithmetic circuits, where all io is width 1
-    // Some is used for boolean circuits and the widths indicate the number of bits in each input
-    // and output
-    pub io_widths: Option<(Vec<usize>, Vec<usize>)>,
-
+    pub io_widths: (Vec<usize>, Vec<usize>),
     pub gates: Vec<Gate>,
 }
 
@@ -52,31 +47,19 @@ impl BristolCircuit {
     pub fn write_bristol<W: Write>(&self, w: &mut W) -> Result<(), BristolCircuitError> {
         writeln!(w, "{} {}", self.gates.len(), self.wire_count)?;
 
-        if let Some((input_widths, output_widths)) = &self.io_widths {
-            write!(w, "{}", input_widths.len())?;
-            for width in input_widths {
-                write!(w, " {}", width)?;
-            }
-            writeln!(w)?;
+        let (input_widths, output_widths) = &self.io_widths;
 
-            write!(w, "{}", output_widths.len())?;
-            for width in output_widths {
-                write!(w, " {}", width)?;
-            }
-            writeln!(w)?;
-        } else {
-            write!(w, "{}", self.info.input_name_to_wire_index.len())?;
-            for _ in 0..self.info.input_name_to_wire_index.len() {
-                write!(w, " 1")?;
-            }
-            writeln!(w)?;
-
-            write!(w, "{}", self.info.output_name_to_wire_index.len())?;
-            for _ in 0..self.info.output_name_to_wire_index.len() {
-                write!(w, " 1")?;
-            }
-            writeln!(w)?;
+        write!(w, "{}", input_widths.len())?;
+        for width in input_widths {
+            write!(w, " {}", width)?;
         }
+        writeln!(w)?;
+
+        write!(w, "{}", output_widths.len())?;
+        for width in output_widths {
+            write!(w, " {}", width)?;
+        }
+        writeln!(w)?;
 
         writeln!(w)?;
 
@@ -107,16 +90,7 @@ impl BristolCircuit {
             });
         }
 
-        let io_widths = {
-            let inputs_all_1 = input_widths.iter().all(|&x| x == 1);
-            let outputs_all_1 = output_widths.iter().all(|&x| x == 1);
-
-            if inputs_all_1 && outputs_all_1 {
-                None
-            } else {
-                Some((input_widths, output_widths))
-            }
-        };
+        let io_widths = (input_widths, output_widths);
 
         let mut gates = Vec::new();
         for _ in 0..gate_count {
@@ -160,7 +134,7 @@ mod tests {
                 constants: Default::default(),
                 output_name_to_wire_index: [("output0".to_string(), 3)].iter().cloned().collect(),
             },
-            io_widths: None,
+            io_widths: (vec![1, 1], vec![1]),
             gates: vec![
                 Gate {
                     inputs: vec![0, 1],
