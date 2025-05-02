@@ -9,7 +9,6 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 pub struct BristolCircuit {
     pub wire_count: usize,
     pub info: CircuitInfo,
-    pub io_widths: (Vec<usize>, Vec<usize>),
     pub gates: Vec<Gate>,
 }
 
@@ -47,14 +46,14 @@ impl BristolCircuit {
     pub fn write_bristol<W: Write>(&self, w: &mut W) -> Result<(), BristolCircuitError> {
         writeln!(w, "{} {}", self.gates.len(), self.wire_count)?;
 
-        let (input_widths, output_widths) = &self.io_widths;
-
+        let input_widths = self.info.input_widths();
         write!(w, "{}", input_widths.len())?;
         for width in input_widths {
             write!(w, " {}", width)?;
         }
         writeln!(w)?;
 
+        let output_widths = self.info.output_widths();
         write!(w, "{}", output_widths.len())?;
         for width in output_widths {
             write!(w, " {}", width)?;
@@ -77,20 +76,18 @@ impl BristolCircuit {
         let (gate_count, wire_count) = BristolLine::read(r)?.circuit_sizes()?;
 
         let input_widths = BristolLine::read(r)?.io_widths()?;
-        if input_widths.len() != info.input_name_to_wire_index.len() {
+        if input_widths.len() != info.inputs.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Input count mismatch".into(),
             });
         }
 
         let output_widths = BristolLine::read(r)?.io_widths()?;
-        if output_widths.len() != info.output_name_to_wire_index.len() {
+        if output_widths.len() != info.outputs.len() {
             return Err(BristolCircuitError::Inconsistency {
                 message: "Output count mismatch".into(),
             });
         }
-
-        let io_widths = (input_widths, output_widths);
 
         let mut gates = Vec::new();
         for _ in 0..gate_count {
@@ -108,7 +105,6 @@ impl BristolCircuit {
         Ok(BristolCircuit {
             wire_count,
             info: info.clone(),
-            io_widths,
             gates,
         })
     }
@@ -116,6 +112,10 @@ impl BristolCircuit {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
+    use crate::circuit_info::IOInfo;
+
     use super::*;
     use std::io::{BufReader, Cursor};
 
@@ -127,14 +127,28 @@ mod tests {
             // which doesn't specify the wire names
             wire_count: 4,
             info: CircuitInfo {
-                input_name_to_wire_index: [("input0".to_string(), 0), ("input1".to_string(), 1)]
-                    .iter()
-                    .cloned()
-                    .collect(),
-                constants: Default::default(),
-                output_name_to_wire_index: [("output0".to_string(), 3)].iter().cloned().collect(),
+                constants: vec![],
+                inputs: vec![
+                    IOInfo {
+                        name: "input0".to_string(),
+                        type_: json!("number"),
+                        address: 0,
+                        width: 1,
+                    },
+                    IOInfo {
+                        name: "input1".to_string(),
+                        type_: json!("number"),
+                        address: 1,
+                        width: 1,
+                    },
+                ],
+                outputs: vec![IOInfo {
+                    name: "output0".to_string(),
+                    type_: json!("number"),
+                    address: 3,
+                    width: 1,
+                }],
             },
-            io_widths: (vec![1, 1], vec![1]),
             gates: vec![
                 Gate {
                     inputs: vec![0, 1],
@@ -182,18 +196,27 @@ mod tests {
         assert_eq!(
             BristolCircuit::from_info_and_bristol_string(
                 &CircuitInfo {
-                    input_name_to_wire_index: [
-                        ("input0".to_string(), 0),
-                        ("input1".to_string(), 1)
-                    ]
-                    .iter()
-                    .cloned()
-                    .collect(),
-                    constants: Default::default(),
-                    output_name_to_wire_index: [("output0".to_string(), 3)]
-                        .iter()
-                        .cloned()
-                        .collect(),
+                    constants: vec![],
+                    inputs: vec![
+                        IOInfo {
+                            name: "input0".to_string(),
+                            type_: json!("number"),
+                            address: 0,
+                            width: 1,
+                        },
+                        IOInfo {
+                            name: "input1".to_string(),
+                            type_: json!("number"),
+                            address: 1,
+                            width: 1,
+                        },
+                    ],
+                    outputs: vec![IOInfo {
+                        name: "output0".to_string(),
+                        type_: json!("number"),
+                        address: 3,
+                        width: 1,
+                    }],
                 },
                 "
                     2 4
